@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>대전중앙중학교 USV 지상관제소 (GCS)</title>
+<style>
+/* ============================================================
+   대전중앙중학교 USV Ground Control Station  v1.1
+   외부 라이브러리 0개 · 인터넷 없이도 동작하는 단일 HTML 파일
+   v1.1 : 하드웨어 없이 연습할 수 있는 시뮬레이션 모드 추가
+   ============================================================ */
+:root{
+  color-scheme: dark;
+  --bg:#0d0d0d; --surface:#1a1a19; --surface2:#232322;
+  --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --line:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --sim:#9085e9;
+  --sans: system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px}
+h1,h2,h3{margin:0;font-weight:600}
+button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:8px;
+  border:1px solid var(--ring);background:var(--surface2);color:var(--ink);padding:8px 14px}
+button:hover{background:#2e2e2c}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+button.primary{background:var(--s1);border-color:transparent;color:#fff;font-weight:600}
+button.danger{background:var(--crit);border-color:transparent;color:#fff;font-weight:700}
+button.on{background:var(--good);border-color:transparent;color:#fff;font-weight:700}
+button.simon{background:var(--sim);border-color:transparent;color:#fff;font-weight:700}
+input,select{font-family:inherit;font-size:13px;background:var(--surface2);color:var(--ink);
+  border:1px solid var(--ring);border-radius:8px;padding:7px 10px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:14px;padding:14px}
+.card > h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.card.simcard{border-color:var(--sim);box-shadow:inset 3px 0 0 var(--sim)}
+.card.simcard > h3{color:var(--sim)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hide{display:none!important}
+
+/* ---------- 헤더 ---------- */
+header{position:sticky;top:0;z-index:20;background:#111110;border-bottom:1px solid var(--ring);
+  padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.brand{font-weight:700;font-size:15px;white-space:nowrap}
+.brand small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
+.dot.live{background:var(--good);box-shadow:0 0 0 3px rgba(12,163,12,.22)}
+.dot.sim{background:var(--sim);box-shadow:0 0 0 3px rgba(144,133,233,.22)}
+.dot.bad{background:var(--crit)}
+.spacer{flex:1}
+
+/* ---------- 상태 타일 ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;padding:12px 16px 0}
+.tile{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:10px 12px}
+.tile .k{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.tile .v{font-size:20px;font-weight:600;margin-top:2px;line-height:1.15;font-variant-numeric:tabular-nums}
+.tile .u{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
+.stale .tiles{opacity:.45;transition:opacity .2s}
+
+/* ---------- 본문 ---------- */
+main{display:grid;grid-template-columns:400px 1fr;gap:12px;padding:12px 16px 24px;align-items:start}
+@media(max-width:1080px){main{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:12px}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:860px){.charts{grid-template-columns:1fr}}
+
+/* ---------- 영상 ---------- */
+.video{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3;
+  display:flex;align-items:center;justify-content:center}
+.video img,.video canvas{width:100%;height:100%;object-fit:contain;display:block}
+.video .ph{color:var(--muted);font-size:13px;text-align:center;padding:20px}
+.video .tag{position:absolute;top:8px;left:8px;font-size:10.5px;letter-spacing:.14em;
+  background:#000000b0;border-radius:4px;padding:3px 7px;pointer-events:none}
+
+/* ---------- 링크 품질 막대 ---------- */
+.bar{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin-top:6px}
+.bar > i{display:block;height:100%;border-radius:99px;transition:width .25s}
+
+/* ---------- 조종 ---------- */
+.pad{position:relative;width:100%;aspect-ratio:1;max-width:230px;margin:6px auto;
+  background:var(--surface2);border:1px solid var(--ring);border-radius:16px;touch-action:none}
+.pad .knob{position:absolute;width:46px;height:46px;border-radius:50%;background:var(--s1);
+  border:2px solid #fff3;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.pad .cross{position:absolute;inset:0;pointer-events:none}
+.mval{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:12px;color:var(--ink2)}
+.mval b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ---------- 차트 ---------- */
+.chart-wrap{position:relative}
+canvas{display:block;width:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:6px}
+.legend span{display:flex;align-items:center;gap:5px}
+.swatch{width:10px;height:10px;border-radius:3px;display:inline-block}
+.tip{position:absolute;pointer-events:none;background:#000000e8;border:1px solid var(--ring);
+  border-radius:8px;padding:7px 9px;font-size:12px;white-space:nowrap;opacity:0;transition:opacity .1s;
+  font-variant-numeric:tabular-nums;z-index:5}
+
+/* ---------- 로그 ---------- */
+#log{height:120px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;
+  color:var(--ink2);background:#111110;border-radius:8px;padding:8px;line-height:1.6}
+#log .e{color:var(--serious)}
+#log .g{color:var(--good)}
+#log .s{color:var(--sim)}
+.kbd{display:inline-block;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+  font-size:11px;color:var(--ink2);background:var(--surface2)}
+table.mini{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.mini td{padding:4px 0;border-bottom:1px solid var(--grid);color:var(--ink2)}
+table.mini td:last-child{text-align:right;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);line-height:1.7}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">대전중앙중학교 USV 지상관제소
+    <small>Catamaran USV · Ground Control Station v1.1</small></div>
+
+  <div class="row" id="realBox">
+    <label style="color:var(--muted);font-size:12px">본체 IP</label>
+    <input id="ipMain" value="192.168.8.20" size="12">
+    <label style="color:var(--muted);font-size:12px">카메라 IP</label>
+    <input id="ipCam" value="192.168.8.30" size="12">
+    <button id="btnConn" class="primary">연결</button>
+  </div>
+
+  <button id="btnSim">🧪 시뮬레이션</button>
+
+  <div class="spacer"></div>
+
+  <div class="row">
+    <span><span id="dot" class="dot"></span><span id="connTxt">연결 안 됨</span></span>
+    <button id="btnArm" disabled>시동 (ARM)</button>
+    <button id="btnStop" class="danger" disabled>■ 비상정지</button>
+  </div>
+</header>
+
+<!-- ================= 상태 타일 ================= -->
+<div class="tiles">
+  <div class="tile"><div class="k">통신 등급</div><div class="v" id="tGrade" style="color:var(--muted)">—</div></div>
+  <div class="tile"><div class="k">신호 세기 RSSI</div><div class="v"><span id="tRssi">—</span><span class="u">dBm</span></div></div>
+  <div class="tile"><div class="k">응답 지연</div><div class="v"><span id="tRtt">—</span><span class="u">ms</span></div></div>
+  <div class="tile"><div class="k">패킷 손실</div><div class="v"><span id="tLoss">—</span><span class="u">%</span></div></div>
+  <div class="tile"><div class="k">배터리</div><div class="v"><span id="tVbat">—</span><span class="u">V</span></div></div>
+  <div class="tile"><div class="k">속도</div><div class="v"><span id="tSpd">—</span><span class="u">m/s</span></div></div>
+  <div class="tile"><div class="k">위성</div><div class="v"><span id="tSat">—</span><span class="u">개</span></div></div>
+  <div class="tile"><div class="k">조종권</div><div class="v" id="tMode">—</div></div>
+</div>
+
+<main>
+  <!-- ================= 왼쪽 열 ================= -->
+  <div class="col">
+
+    <!-- ===== 시뮬레이션 패널 (시뮬레이션 모드에서만 표시) ===== -->
+    <div class="card simcard hide" id="simPanel">
+      <h3>시뮬레이션 — 가상 USV</h3>
+      <p class="hint" style="margin:0 0 10px">
+        실제 배 없이 GCS를 연습할 수 있습니다. 가상의 배가 조종 명령에 따라 실제처럼 움직이고,
+        멀어질수록 신호가 약해집니다.</p>
+
+      <label style="font-size:12px;color:var(--ink2);display:block;margin-bottom:4px">상황 설정</label>
+      <select id="simScn" style="width:100%">
+        <option value="normal">① 정상 운항 — 기본 연습</option>
+        <option value="weaklink">② 통신 약화 — 신호 등급 경보 확인</option>
+        <option value="lowbatt">③ 저전압 출발 — 배터리 경보·자동 정지 확인</option>
+        <option value="rough">④ 파고 높음 — 자세 그래프 확인</option>
+        <option value="capsize">⑤ 전복 — 페일세이프 동작 확인</option>
+        <option value="blackout">⑥ 통신 두절 — 신호 끊김 표시 확인</option>
+      </select>
+
+      <div class="row" style="margin-top:10px">
+        <label style="font-size:12px;color:var(--ink2);flex:1">파고
+          <input id="simWave" type="range" min="0" max="100" value="40" style="width:100%">
+        </label>
+        <label style="font-size:12px;color:var(--ink2)">시간 배속
+          <select id="simSpeed" style="padding:3px 6px">
+            <option value="1">1배</option>
+            <option value="10" selected>10배</option>
+            <option value="40">40배</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint" style="margin:2px 0 10px">배속은 배터리 소모를, 자동 직진 중에는 항해 속도까지 빠르게 합니다 — 30분 운항을 3분 만에 볼 수 있습니다. 손으로 조종할 때는 항상 실제 속도입니다.</p>
+
+      <div class="row">
+        <button id="simAuto">▶ 자동 직진 (거리 시험)</button>
+        <button id="simRc">RC 조종기 모드</button>
+        <button id="simReset">처음으로</button>
+      </div>
+
+      <table class="mini" style="margin-top:12px">
+        <tr><td>홈까지 거리</td><td><b id="simDist">0</b> m</td></tr>
+        <tr><td>소비 전류</td><td><b id="simAmp">0.0</b> A</td></tr>
+        <tr><td>배터리 잔량</td><td><b id="simSoc">100</b> %</td></tr>
+        <tr><td>경과 시간</td><td><b id="simElapsed">00:00</b></td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 id="vidTitle">실시간 영상 · XIAO ESP32S3</h3>
+      <div class="video" id="vidBox">
+        <div class="ph" id="vidPh">연결하면 영상이 표시됩니다</div>
+      </div>
+      <div class="row" style="margin-top:10px" id="camCtl">
+        <select id="camSize">
+          <option value="QVGA">320×240 (최대 사거리)</option>
+          <option value="VGA" selected>640×480 (권장)</option>
+          <option value="SVGA">800×600 (근거리)</option>
+        </select>
+        <select id="camQ">
+          <option value="20">저용량</option>
+          <option value="14" selected>표준</option>
+          <option value="10">고화질</option>
+        </select>
+        <button id="btnSnap">📷 사진 저장</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>통신 품질</h3>
+      <div style="font-size:12px;color:var(--ink2)">신호 세기 <b id="qRssiTxt" style="color:var(--ink)">—</b></div>
+      <div class="bar"><i id="qRssiBar" style="width:0;background:var(--muted)"></i></div>
+      <div style="font-size:12px;color:var(--ink2);margin-top:10px">전송 성공률 <b id="qOkTxt" style="color:var(--ink)">—</b></div>
+      <div class="bar"><i id="qOkBar" style="width:0;background:var(--muted)"></i></div>
+      <div class="chart-wrap" style="margin-top:14px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">RSSI 추이 (dBm)</div>
+        <canvas id="cRssi" height="110"></canvas><div class="tip" id="tipRssi"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>조종</h3>
+      <div class="pad" id="pad">
+        <svg class="cross" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <line x1="50" y1="4" x2="50" y2="96" stroke="#ffffff18" stroke-width=".6"/>
+          <line x1="4" y1="50" x2="96" y2="50" stroke="#ffffff18" stroke-width=".6"/>
+        </svg>
+        <div class="knob" id="knob"></div>
+      </div>
+      <div class="mval">
+        <div>전후 스로틀 <b id="vThr">0.00</b></div>
+        <div>좌우 조향 <b id="vStr">0.00</b></div>
+        <div>좌현 펄스 <b id="vPL">1500</b> µs</div>
+        <div>우현 펄스 <b id="vPR">1500</b> µs</div>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        키보드 <span class="kbd">W</span><span class="kbd">S</span> 전진·후진 ·
+        <span class="kbd">A</span><span class="kbd">D</span> 좌·우 ·
+        <span class="kbd">Space</span> 비상정지<br>
+        게임패드를 연결하면 자동 인식됩니다 · <span id="gpTxt">게임패드 없음</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label style="font-size:12px;color:var(--ink2)">출력 제한
+          <input id="gain" type="range" min="20" max="100" value="60" style="vertical-align:middle">
+          <b id="gainTxt">60%</b></label>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= 오른쪽 열 ================= -->
+  <div class="col">
+
+    <div class="charts">
+      <div class="card">
+        <h3>자세 · 좌우·앞뒤 기울기 (도)</h3>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--s1)"></i>Roll (좌우)</span>
+          <span><i class="swatch" style="background:var(--s2)"></i>Pitch (앞뒤)</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cAtt" height="170"></canvas><div class="tip" id="tipAtt"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>선수 방위 (도)</h3>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--s1)"></i>Yaw (자이로)</span>
+          <span><i class="swatch" style="background:var(--s2)"></i>GPS 침로</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cYaw" height="170"></canvas><div class="tip" id="tipYaw"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>가속도 (g)</h3>
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--s1)"></i>X (전후)</span>
+          <span><i class="swatch" style="background:var(--s2)"></i>Y (좌우)</span>
+          <span><i class="swatch" style="background:var(--s3)"></i>Z (상하)</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cAcc" height="170"></canvas><div class="tip" id="tipAcc"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>요 각속도 (도/초)</h3>
+        <div class="chart-wrap"><canvas id="cGz" height="170"></canvas><div class="tip" id="tipGz"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>대지 속도 (m/s)</h3>
+        <div class="chart-wrap"><canvas id="cSpd" height="150"></canvas><div class="tip" id="tipSpd"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>배터리 전압 (V)</h3>
+        <div class="chart-wrap"><canvas id="cVolt" height="150"></canvas><div class="tip" id="tipVolt"></div></div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="card">
+        <h3>항적 (GPS)</h3>
+        <canvas id="cMap" height="260"></canvas>
+        <div class="row" style="margin-top:8px">
+          <button id="btnHome">현재 위치를 홈으로</button>
+          <button id="btnClrTrack">항적 지우기</button>
+          <span style="font-size:12px;color:var(--muted)">홈까지 <b id="tHome" style="color:var(--ink)">—</b> m</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>데이터 기록</h3>
+        <div class="row">
+          <button id="btnRec" class="primary">● 기록 시작</button>
+          <button id="btnXlsx" disabled>엑셀(.xlsx) 저장</button>
+          <button id="btnCsv" disabled>CSV 저장</button>
+          <button id="btnClrRec" disabled>기록 삭제</button>
+        </div>
+        <table class="mini" style="margin-top:12px">
+          <tr><td>기록 상태</td><td id="recState">대기</td></tr>
+          <tr><td>수집 샘플</td><td id="recCount">0 개</td></tr>
+          <tr><td>기록 시간</td><td id="recTime">00:00</td></tr>
+          <tr><td>기록 주기</td><td>
+            <select id="recHz" style="padding:2px 6px">
+              <option value="1">10 Hz (전부)</option>
+              <option value="2" selected>5 Hz</option>
+              <option value="10">1 Hz</option>
+            </select></td></tr>
+        </table>
+        <div style="margin-top:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:5px">시스템 로그</div>
+          <div id="log"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>상세 텔레메트리</h3>
+      <div class="charts" style="gap:0 28px">
+        <table class="mini">
+          <tr><td>위도</td><td id="dLat">—</td></tr>
+          <tr><td>경도</td><td id="dLon">—</td></tr>
+          <tr><td>고도</td><td id="dAlt">—</td></tr>
+          <tr><td>진행 방위</td><td id="dCog">—</td></tr>
+          <tr><td>HDOP</td><td id="dHdop">—</td></tr>
+          <tr><td>GPS 픽스</td><td id="dFix">—</td></tr>
+        </table>
+        <table class="mini">
+          <tr><td>Roll / Pitch</td><td id="dRP">—</td></tr>
+          <tr><td>Yaw</td><td id="dYaw">—</td></tr>
+          <tr><td>요 각속도</td><td id="dGz">—</td></tr>
+          <tr><td>IMU 온도</td><td id="dTmp">—</td></tr>
+          <tr><td>RC 수신기</td><td id="dRc">—</td></tr>
+          <tr><td>페일세이프</td><td id="dFs">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+"use strict";
+/* =====================================================================
+   0. 공통 유틸
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const fmt = (v,n=2) => (v===null||v===undefined||Number.isNaN(v)) ? "—" : Number(v).toFixed(n);
+const CSS = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const RAD = Math.PI/180;
+
+function log(msg, cls=""){
+  const el = $("log");
+  const t = new Date().toTimeString().slice(0,8);
+  el.insertAdjacentHTML("beforeend", `<div class="${cls}">[${t}] ${msg}</div>`);
+  el.scrollTop = el.scrollHeight;
+  while(el.childElementCount > 300) el.removeChild(el.firstChild);
+}
+
+/* =====================================================================
+   1. 미니 라인차트 엔진  (외부 라이브러리 없음)
+   ===================================================================== */
+class LineChart{
+  constructor(canvasId, tipId, opts){
+    this.cv = $(canvasId); this.tip = $(tipId);
+    this.o = Object.assign({series:[], unit:"", yPad:0.12, maxPoints:600,
+                            fixed:null, decimals:2}, opts);
+    this.data = []; this.hover = -1;
+    // 캔버스 높이는 '처음 한 번만' 읽어 둡니다.
+    // height 속성을 매번 다시 읽으면 화면 배율(dpr)이 곱해진 값을 또 읽게 되어
+    // 고해상도 화면에서 캔버스가 기하급수적으로 커지다 그려지지 않습니다.
+    this.cssH = parseInt(this.cv.getAttribute("height")) || 160;
+    this._bind(); this._resize();
+    new ResizeObserver(()=>this._resize()).observe(this.cv.parentElement);
+  }
+  _resize(){
+    const dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+    const w = Math.round(this.cv.parentElement.clientWidth);
+    const h = this.cssH;
+    if(w < 20) return;                       // 숨겨져 있을 때는 건너뜀
+    const bw = Math.round(w*dpr), bh = Math.round(h*dpr);
+    if(this.cv.width !== bw || this.cv.height !== bh){
+      this.cv.width = bw; this.cv.height = bh;
+    }
+    this.cv.style.height = h+"px";
+    this.ctx = this.cv.getContext("2d");
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    this.w = w; this.h = h;
+    this.draw();
+  }
+  _bind(){
+    this.cv.addEventListener("mousemove", e=>{
+      const r = this.cv.getBoundingClientRect();
+      const x = e.clientX - r.left;
+      if(!this.data.length) return;
+      const {L,R} = this._box();
+      const i = Math.round((x-L)/Math.max(1,(R-L))*(this.data.length-1));
+      this.hover = clamp(i,0,this.data.length-1);
+      this.draw(); this._showTip(x, e.clientY - r.top);
+    });
+    this.cv.addEventListener("mouseleave", ()=>{
+      this.hover = -1; this.tip.style.opacity = 0; this.draw();
+    });
+  }
+  _box(){ return {L:44, R:this.w-8, T:10, B:this.h-20}; }
+  push(t, values){
+    this.data.push({t, v:values});
+    if(this.data.length > this.o.maxPoints) this.data.shift();
+  }
+  clear(){ this.data = []; this.hover=-1; this.draw(); }
+  _range(){
+    if(this.o.fixed) return this.o.fixed;
+    let mn=Infinity, mx=-Infinity;
+    for(const d of this.data) for(const v of d.v){
+      if(v===null||Number.isNaN(v)) continue;
+      if(v<mn)mn=v; if(v>mx)mx=v;
+    }
+    if(!isFinite(mn)){ mn=0; mx=1; }
+    if(mx-mn < 1e-6){ mn-=0.5; mx+=0.5; }
+    const p = (mx-mn)*this.o.yPad;
+    return [mn-p, mx+p];
+  }
+  draw(){
+    const c = this.ctx; if(!c) return;
+    const {L,R,T,B} = this._box();
+    c.clearRect(0,0,this.w,this.h);
+    const [mn,mx] = this._range();
+    const yOf = v => B - (v-mn)/(mx-mn)*(B-T);
+    const xOf = i => L + (this.data.length<2?0:i/(this.data.length-1)*(R-L));
+
+    c.font = "10px "+CSS("--sans"); c.textBaseline="middle";
+    for(let k=0;k<=4;k++){
+      const v = mn + (mx-mn)*k/4, y = yOf(v);
+      c.strokeStyle = CSS("--grid"); c.lineWidth = 1;
+      c.beginPath(); c.moveTo(L,Math.round(y)+.5); c.lineTo(R,Math.round(y)+.5); c.stroke();
+      c.fillStyle = CSS("--muted"); c.textAlign="right";
+      c.fillText(v.toFixed(Math.abs(mx-mn)<5?1:0), L-6, y);
+    }
+    c.strokeStyle = CSS("--line");
+    c.beginPath(); c.moveTo(L,B+.5); c.lineTo(R,B+.5); c.stroke();
+
+    if(this.data.length < 2){
+      c.fillStyle = CSS("--muted"); c.textAlign="center";
+      c.fillText("데이터 대기 중", (L+R)/2, (T+B)/2);
+      return;
+    }
+
+    this.o.series.forEach((s,si)=>{
+      c.strokeStyle = s.color; c.lineWidth = 2;
+      c.lineJoin="round"; c.lineCap="round";
+      c.beginPath(); let started=false;
+      this.data.forEach((d,i)=>{
+        const v = d.v[si];
+        if(v===null||v===undefined||Number.isNaN(v)){ started=false; return; }
+        const x=xOf(i), y=yOf(v);
+        if(!started){ c.moveTo(x,y); started=true; } else c.lineTo(x,y);
+      });
+      c.stroke();
+      const last = this.data[this.data.length-1].v[si];
+      if(last!==null && last!==undefined && !Number.isNaN(last)){
+        const y = yOf(last);
+        c.fillStyle = CSS("--surface");
+        c.beginPath(); c.arc(R,y,4.5,0,7); c.fill();
+        c.fillStyle = s.color;
+        c.beginPath(); c.arc(R,y,3.2,0,7); c.fill();
+      }
+    });
+
+    if(this.hover>=0 && this.hover<this.data.length){
+      const x = xOf(this.hover);
+      c.strokeStyle = CSS("--muted"); c.lineWidth=1; c.setLineDash([3,3]);
+      c.beginPath(); c.moveTo(x,T); c.lineTo(x,B); c.stroke(); c.setLineDash([]);
+      this.o.series.forEach((s,si)=>{
+        const v=this.data[this.hover].v[si];
+        if(v===null||v===undefined||Number.isNaN(v))return;
+        const y=yOf(v);
+        c.fillStyle=CSS("--surface"); c.beginPath(); c.arc(x,y,6,0,7); c.fill();
+        c.fillStyle=s.color; c.beginPath(); c.arc(x,y,4,0,7); c.fill();
+      });
+    }
+  }
+  _showTip(px,py){
+    const d = this.data[this.hover]; if(!d) return;
+    const rows = this.o.series.map((s,i)=>
+      `<div style="display:flex;gap:8px;align-items:center">
+         <i style="width:8px;height:8px;border-radius:2px;background:${s.color};display:inline-block"></i>
+         <span style="color:var(--ink2)">${s.name}</span>
+         <b style="margin-left:auto">${fmt(d.v[i],this.o.decimals)}${this.o.unit}</b></div>`).join("");
+    this.tip.innerHTML = `<div style="color:var(--muted);margin-bottom:4px">${d.t}</div>${rows}`;
+    this.tip.style.opacity = 1;
+    const w = this.tip.offsetWidth;
+    this.tip.style.left = clamp(px+14, 0, this.cv.clientWidth-w-4)+"px";
+    this.tip.style.top  = clamp(py-10, 0, this.h-40)+"px";
+  }
+}
+
+const chAtt  = new LineChart("cAtt","tipAtt",{decimals:1,unit:"°",
+  series:[{name:"Roll",color:CSS("--s1")},{name:"Pitch",color:CSS("--s2")}]});
+const chYaw  = new LineChart("cYaw","tipYaw",{decimals:1,unit:"°",fixed:[0,360],
+  series:[{name:"Yaw",color:CSS("--s1")},{name:"GPS 침로",color:CSS("--s2")}]});
+const chAcc  = new LineChart("cAcc","tipAcc",{decimals:2,unit:" g",
+  series:[{name:"X",color:CSS("--s1")},{name:"Y",color:CSS("--s2")},{name:"Z",color:CSS("--s3")}]});
+const chGz   = new LineChart("cGz","tipGz",{decimals:1,unit:" °/s",
+  series:[{name:"요 각속도",color:CSS("--s1")}]});
+const chSpd  = new LineChart("cSpd","tipSpd",{decimals:2,unit:" m/s",
+  series:[{name:"속도",color:CSS("--s1")}]});
+const chVolt = new LineChart("cVolt","tipVolt",{decimals:2,unit:" V",
+  series:[{name:"전압",color:CSS("--s2")}]});
+const chRssi = new LineChart("cRssi","tipRssi",{decimals:0,unit:" dBm",maxPoints:300,
+  series:[{name:"RSSI",color:CSS("--s1")}]});
+const ALL_CHARTS = [chAtt,chYaw,chAcc,chGz,chSpd,chVolt,chRssi];
+
+/* =====================================================================
+   2. 통신 — 실제 WebSocket / 시뮬레이션 공용 경로
+   ===================================================================== */
+let ws=null, connected=false, simOn=false, sim=null;
+let lastSeq=-1, recvWindow=[], rttList=[], pingId=0, pingSent={}, lastTelem=0;
+let T = {}, track = [], home = null;
+
+function setLink(state, label){
+  $("dot").className = "dot " + state;
+  $("connTxt").textContent = label;
+}
+function resetLinkStats(){
+  lastSeq=-1; recvWindow=[]; rttList=[]; pingSent={}; lastTelem=0;
+  T={}; track=[]; home=null;
+  ALL_CHARTS.forEach(c=>c.clear());
+  drawMap();
+}
+
+function connect(){
+  if(simOn){ log("시뮬레이션 중에는 실제 연결을 할 수 없습니다. 먼저 시뮬레이션을 끄세요.","e"); return; }
+  if(connected){ ws.close(); return; }
+  const ip = $("ipMain").value.trim();
+  log(`본체 ${ip} 로 접속 시도…`);
+  try{ ws = new WebSocket(`ws://${ip}/ws`); }
+  catch(e){ log("주소 형식 오류: "+e.message,"e"); return; }
+
+  ws.onopen = ()=>{
+    connected = true;
+    resetLinkStats();
+    $("btnConn").textContent = "연결 끊기";
+    $("btnConn").classList.remove("primary");
+    setLink("live","연결됨");
+    $("btnArm").disabled = false; $("btnStop").disabled = false;
+    $("btnSim").disabled = true;
+    log("본체 연결 성공","g");
+    startVideo();
+  };
+  ws.onclose = ()=>{
+    connected = false;
+    $("btnConn").textContent = "연결";
+    $("btnConn").classList.add("primary");
+    setLink("bad","연결 끊김");
+    $("btnArm").disabled = true; $("btnStop").disabled = true;
+    $("btnSim").disabled = false;
+    $("btnArm").classList.remove("on"); $("btnArm").textContent = "시동 (ARM)";
+    log("본체 연결 종료","e");
+    stopVideo();
+  };
+  ws.onerror = ()=> log("WebSocket 오류 — IP와 Wi-Fi 접속을 확인하세요","e");
+  ws.onmessage = e => onMessage(e.data);
+}
+
+function send(obj){
+  if(simOn){ sim.command(obj); return; }
+  if(connected && ws && ws.readyState===1) ws.send(JSON.stringify(obj));
+}
+
+function onMessage(raw){
+  let d; try{ d = JSON.parse(raw); }catch(e){ return; }
+
+  if(d.c === "pong"){
+    const t0 = pingSent[d.id];
+    if(t0){ rttList.push(performance.now()-t0); if(rttList.length>10) rttList.shift();
+            delete pingSent[d.id]; }
+    return;
+  }
+  if(d.c === "err"){ log("본체: "+d.m, "e"); return; }
+
+  if(lastSeq >= 0){
+    const gap = d.seq - lastSeq;
+    recvWindow.push(gap>0 ? gap : 1);
+    if(recvWindow.length > 100) recvWindow.shift();
+  }
+  lastSeq = d.seq;
+  lastTelem = performance.now();
+
+  T = d;
+  updateUI(d);
+  recordSample(d);
+}
+
+/* 주기적 핑 */
+setInterval(()=>{
+  if(!connected && !simOn) return;
+  const id = ++pingId;
+  pingSent[id] = performance.now();
+  send({c:"ping", id});
+  const now = performance.now();
+  for(const k in pingSent) if(now - pingSent[k] > 3000) delete pingSent[k];
+}, 500);
+
+/* 텔레메트리 감시견 — 신호가 2초 넘게 끊기면 화면으로 알림 */
+setInterval(()=>{
+  if(!connected && !simOn) return;
+  const silent = lastTelem && (performance.now() - lastTelem > 2000);
+  document.body.classList.toggle("stale", silent);
+  if(silent){
+    setLink("bad","신호 없음");
+    if(!window._silentLogged){ window._silentLogged = true; log("텔레메트리가 2초 이상 끊겼습니다","e"); }
+  }else if(lastTelem){
+    setLink(simOn?"sim":"live", simOn?"시뮬레이션 중":"연결됨");
+    window._silentLogged = false;
+  }
+}, 400);
+
+/* =====================================================================
+   3. 링크 품질 판정
+   ===================================================================== */
+function linkQuality(rssi){
+  const sent = recvWindow.reduce((a,b)=>a+b,0);
+  const loss = sent ? (1 - recvWindow.length/sent)*100 : 0;
+  const rtt  = rttList.length ? rttList.reduce((a,b)=>a+b,0)/rttList.length : null;
+
+  let grade, color;
+  if(rssi > -60 && loss < 2  && (rtt===null||rtt < 80))       { grade="우수"; color=CSS("--good"); }
+  else if(rssi > -70 && loss < 5  && (rtt===null||rtt < 180)) { grade="양호"; color=CSS("--good"); }
+  else if(rssi > -78 && loss < 12 && (rtt===null||rtt < 400)) { grade="주의"; color=CSS("--warn"); }
+  else if(rssi > -85 && loss < 30)                            { grade="약함"; color=CSS("--serious"); }
+  else                                                        { grade="불량"; color=CSS("--crit"); }
+  return {grade, color, loss, rtt};
+}
+
+/* =====================================================================
+   4. 화면 갱신
+   ===================================================================== */
+let uiTick = 0;
+function updateUI(d){
+  const q = linkQuality(d.rssi);
+
+  $("tGrade").textContent = q.grade;
+  $("tGrade").style.color = q.color;
+  $("tRssi").textContent  = d.rssi;
+  $("tRtt").textContent   = q.rtt===null ? "—" : Math.round(q.rtt);
+  $("tLoss").textContent  = q.loss.toFixed(1);
+  $("tVbat").textContent  = fmt(d.vbat,2);
+  $("tVbat").style.color  = d.vbat<10.2?CSS("--crit"):d.vbat<10.8?CSS("--warn"):CSS("--ink");
+  $("tSpd").textContent   = fmt(d.spd,2);
+  $("tSat").textContent   = d.sat;
+  $("tSat").style.color   = d.fix?CSS("--ink"):CSS("--warn");
+  $("tMode").textContent  = d.mode==="RC" ? "RC 조종기" : "GCS";
+  $("tMode").style.color  = d.mode==="RC" ? CSS("--s4") : CSS("--ink");
+
+  const rp = clamp((d.rssi+90)/50*100, 0, 100);
+  $("qRssiBar").style.width = rp+"%";
+  $("qRssiBar").style.background = q.color;
+  $("qRssiTxt").textContent = `${d.rssi} dBm · ${q.grade}`;
+  const okp = clamp(100 - q.loss, 0, 100);
+  $("qOkBar").style.width = okp+"%";
+  $("qOkBar").style.background = okp>95?CSS("--good"):okp>85?CSS("--warn"):CSS("--crit");
+  $("qOkTxt").textContent = okp.toFixed(1)+"%";
+
+  $("btnArm").classList.toggle("on", !!d.arm);
+  $("btnArm").textContent = d.arm ? "시동 중 (누르면 정지)" : "시동 (ARM)";
+
+  $("dLat").textContent = d.fix ? d.lat.toFixed(6) : "—";
+  $("dLon").textContent = d.fix ? d.lon.toFixed(6) : "—";
+  $("dAlt").textContent = fmt(d.alt,1)+" m";
+  $("dCog").textContent = fmt(d.cog,1)+"°";
+  $("dHdop").textContent= fmt(d.hdop,2);
+  $("dFix").textContent = d.fix ? "확보" : "미확보";
+  $("dFix").style.color = d.fix ? CSS("--good") : CSS("--warn");
+  $("dRP").textContent  = `${fmt(d.roll,1)}° / ${fmt(d.pitch,1)}°`;
+  $("dYaw").textContent = fmt(d.yaw,1)+"°";
+  $("dGz").textContent  = fmt(d.gz,1)+"°/s";
+  $("dTmp").textContent = fmt(d.tmp,1)+" ℃";
+  $("dRc").textContent  = d.rc ? "정상" : "신호 없음";
+  $("dRc").style.color  = d.rc ? CSS("--good") : CSS("--muted");
+  $("dFs").textContent  = d.fs ? d.fs : "정상";
+  $("dFs").style.color  = d.fs ? CSS("--crit") : CSS("--good");
+  $("vPL").textContent  = d.pl; $("vPR").textContent = d.pr;
+
+  if(d.fix && d.lat && d.lon){
+    const last = track[track.length-1];
+    if(!last || Math.abs(last[0]-d.lat)>1e-6 || Math.abs(last[1]-d.lon)>1e-6){
+      track.push([d.lat, d.lon]);
+      if(track.length>3000) track.shift();
+      if(!home) home = [d.lat, d.lon];
+    }
+    $("tHome").textContent = home ? distM(home, [d.lat,d.lon]).toFixed(0) : "—";
+  }
+
+  if(++uiTick % 2 === 0){
+    const ts = new Date().toTimeString().slice(0,8);
+    chAtt.push(ts,[d.roll,d.pitch]);                        chAtt.draw();
+    // 359° → 1° 로 넘어갈 때 선이 화면을 가로지르지 않도록 끊어 줍니다
+    const pv = chYaw.data.length ? chYaw.data[chYaw.data.length-1].v[0] : null;
+    if(pv !== null && Math.abs(d.yaw - pv) > 180) chYaw.push(ts,[null,null]);
+    chYaw.push(ts,[d.yaw, d.fix&&d.spd>0.5 ? d.cog : null]); chYaw.draw();
+    chAcc.push(ts,[d.ax,d.ay,d.az]);                        chAcc.draw();
+    chGz.push(ts,[d.gz]);                                   chGz.draw();
+    chSpd.push(ts,[d.spd]);                                 chSpd.draw();
+    chVolt.push(ts,[d.vbat]);                               chVolt.draw();
+    chRssi.push(ts,[d.rssi]);                               chRssi.draw();
+    drawMap();
+  }
+}
+
+function distM(a,b){
+  const R=6371000;
+  const dLat=(b[0]-a[0])*RAD, dLon=(b[1]-a[1])*RAD;
+  const s=Math.sin(dLat/2)**2 + Math.cos(a[0]*RAD)*Math.cos(b[0]*RAD)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+
+/* =====================================================================
+   5. 항적 지도 (오프라인 · 자체 캔버스 플롯)
+   ===================================================================== */
+const mapCv = $("cMap");
+function drawMap(){
+  const dpr = clamp(window.devicePixelRatio||1, 1, 3);
+  const w = Math.round(mapCv.parentElement.clientWidth), h = 260;
+  if(w < 20) return;
+  const bw = Math.round(w*dpr), bh = Math.round(h*dpr);
+  if(mapCv.width !== bw || mapCv.height !== bh){
+    mapCv.width=bw; mapCv.height=bh; mapCv.style.height=h+"px";
+  }
+  const c = mapCv.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,w,h);
+  c.fillStyle = "#141413"; c.fillRect(0,0,w,h);
+
+  if(track.length < 1){
+    c.fillStyle=CSS("--muted"); c.font="12px "+CSS("--sans"); c.textAlign="center";
+    c.fillText("GPS 픽스를 기다리는 중…", w/2, h/2); return;
+  }
+
+  const lats = track.map(p=>p[0]), lons = track.map(p=>p[1]);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+  const minLon=Math.min(...lons), maxLon=Math.max(...lons);
+  const midLat=(minLat+maxLat)/2;
+  const kx = Math.cos(midLat*RAD);
+  const spanLat = Math.max(maxLat-minLat, 1e-5);
+  const spanLon = Math.max((maxLon-minLon)*kx, 1e-5);
+  const span = Math.max(spanLat, spanLon)*1.35;
+  const pad = 24;
+  const S = Math.min(w-pad*2, h-pad*2)/span;
+  const px = ln => w/2 + (ln-(minLon+maxLon)/2)*kx*S;
+  const py = lt => h/2 - (lt-midLat)*S;
+
+  const meters = span*111320;
+  const nice = [1,2,5,10,20,50,100,200,500,1000,2000].find(v=>v > meters/5) || 2000;
+  const barPx = nice/111320*S;
+  c.strokeStyle=CSS("--line"); c.lineWidth=2;
+  c.beginPath(); c.moveTo(12,h-14); c.lineTo(12+barPx,h-14); c.stroke();
+  c.fillStyle=CSS("--muted"); c.font="10px "+CSS("--sans"); c.textAlign="left";
+  c.fillText(nice+" m", 12, h-20);
+
+  c.strokeStyle=CSS("--s1"); c.lineWidth=2; c.lineJoin="round";
+  c.beginPath();
+  track.forEach((p,i)=> i?c.lineTo(px(p[1]),py(p[0])):c.moveTo(px(p[1]),py(p[0])));
+  c.stroke();
+
+  if(home){
+    const x=px(home[1]), y=py(home[0]);
+    c.strokeStyle=CSS("--s4"); c.lineWidth=2;
+    c.beginPath(); c.arc(x,y,7,0,7); c.stroke();
+    c.beginPath(); c.moveTo(x-10,y); c.lineTo(x+10,y); c.moveTo(x,y-10); c.lineTo(x,y+10); c.stroke();
+    c.fillStyle=CSS("--s4"); c.font="10px "+CSS("--sans"); c.fillText("HOME", x+12, y-8);
+  }
+
+  const p = track[track.length-1];
+  const x=px(p[1]), y=py(p[0]);
+  const hd = ((T.spd>0.5 ? T.cog : T.yaw) || 0)*RAD;
+  c.save(); c.translate(x,y); c.rotate(hd);
+  c.fillStyle=CSS("--s2");
+  c.beginPath(); c.moveTo(0,-11); c.lineTo(7,8); c.lineTo(0,4); c.lineTo(-7,8); c.closePath(); c.fill();
+  c.strokeStyle=CSS("--surface"); c.lineWidth=2; c.stroke();
+  c.restore();
+}
+window.addEventListener("resize", drawMap);
+drawMap();
+
+/* =====================================================================
+   6. 조종 입력 (키보드 · 가상 패드 · 게임패드)
+   ===================================================================== */
+let thr=0, str=0, keyThr=0, keyStr=0, padThr=0, padStr=0, padActive=false;
+let gain = 0.6;
+
+$("gain").addEventListener("input", e=>{
+  gain = e.target.value/100; $("gainTxt").textContent = e.target.value+"%";
+});
+
+const keys = {};
+addEventListener("keydown", e=>{
+  if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
+  keys[e.code] = true;
+  if(e.code==="Space"){ e.preventDefault(); emergencyStop(); }
+});
+addEventListener("keyup", e=>{ keys[e.code]=false; });
+
+function readKeys(){
+  const up   = keys.KeyW||keys.ArrowUp,   down = keys.KeyS||keys.ArrowDown;
+  const left = keys.KeyA||keys.ArrowLeft, right= keys.KeyD||keys.ArrowRight;
+  const step = 0.06, decay = 0.12;
+  if(up)        keyThr = clamp(keyThr+step,-1,1);
+  else if(down) keyThr = clamp(keyThr-step,-1,1);
+  else          keyThr = Math.abs(keyThr)<decay ? 0 : keyThr - Math.sign(keyThr)*decay;
+  if(right)     keyStr = clamp(keyStr+step*1.5,-1,1);
+  else if(left) keyStr = clamp(keyStr-step*1.5,-1,1);
+  else          keyStr = Math.abs(keyStr)<decay*2 ? 0 : keyStr - Math.sign(keyStr)*decay*2;
+}
+
+const pad = $("pad"), knob = $("knob");
+function padMove(ev){
+  const r = pad.getBoundingClientRect();
+  const cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+  padStr = clamp((cx/r.width  - .5)*2, -1, 1);
+  padThr = clamp(-(cy/r.height - .5)*2, -1, 1);
+  knob.style.left = (50 + padStr*42) + "%";
+  knob.style.top  = (50 - padThr*42) + "%";
+}
+function padEnd(){
+  padActive = false; padThr = padStr = 0;
+  knob.style.left = "50%"; knob.style.top = "50%";
+}
+pad.addEventListener("pointerdown", e=>{ padActive=true; pad.setPointerCapture(e.pointerId); padMove(e); });
+pad.addEventListener("pointermove", e=>{ if(padActive) padMove(e); });
+pad.addEventListener("pointerup", padEnd);
+pad.addEventListener("pointercancel", padEnd);
+pad.addEventListener("lostpointercapture", padEnd);
+
+addEventListener("gamepadconnected", e=>{
+  log("게임패드 연결: "+e.gamepad.id, "g");
+  $("gpTxt").textContent = "게임패드 연결됨"; $("gpTxt").style.color = CSS("--good");
+});
+addEventListener("gamepaddisconnected", ()=>{
+  $("gpTxt").textContent = "게임패드 없음"; $("gpTxt").style.color = CSS("--muted");
+});
+function readGamepad(){
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  for(const g of gps){
+    if(!g) continue;
+    const dz = v => Math.abs(v)<0.12 ? 0 : v;
+    const gThr = -dz(g.axes[1]||0), gStr = dz(g.axes[2] ?? g.axes[0] ?? 0);
+    if(g.buttons[1] && g.buttons[1].pressed) emergencyStop();
+    if(gThr || gStr) return [gThr, gStr];
+  }
+  return null;
+}
+
+/* 20 Hz 송신 루프 */
+setInterval(()=>{
+  readKeys();
+  const gp = readGamepad();
+  if(simOn && sim.autoRun){ thr = 0.75; str = 0; }
+  else if(gp)             { thr = gp[0]; str = gp[1]; }
+  else if(padActive)      { thr = padThr; str = padStr; }
+  else                    { thr = keyThr; str = keyStr; }
+
+  const oThr = thr*gain, oStr = str*gain;
+  $("vThr").textContent = fmt(oThr,2);
+  $("vStr").textContent = fmt(oStr,2);
+  send({c:"drive", thr:+oThr.toFixed(3), str:+oStr.toFixed(3)});
+}, 50);
+
+/* =====================================================================
+   7. 버튼
+   ===================================================================== */
+$("btnConn").onclick = connect;
+$("btnArm").onclick  = ()=>{ send({c:"arm", v: T.arm?0:1}); };
+$("btnStop").onclick = emergencyStop;
+function emergencyStop(){
+  keyThr=keyStr=padThr=padStr=0; padEnd();
+  if(simOn) sim.autoRun = false, $("simAuto").classList.remove("simon");
+  send({c:"stop"});
+  log("■ 비상정지 명령 전송","e");
+}
+$("btnHome").onclick = ()=>{
+  if(T.fix){ home=[T.lat,T.lon]; log("홈 위치 설정","g"); drawMap(); }
+  else log("GPS 픽스가 없어 홈을 설정할 수 없습니다","e");
+};
+$("btnClrTrack").onclick = ()=>{ track=[]; drawMap(); };
+
+/* =====================================================================
+   8. 영상 — 실제 MJPEG / 가상 카메라
+   ===================================================================== */
+let vidEl = null, simCam = null;
+function clearVideo(){
+  if(vidEl){ vidEl.src=""; vidEl.remove(); vidEl=null; }
+  if(simCam){ simCam.remove(); simCam=null; }
+}
+function startVideo(){
+  const ip = $("ipCam").value.trim();
+  clearVideo();
+  vidEl = document.createElement("img");
+  vidEl.src = `http://${ip}/stream?_=${Date.now()}`;
+  vidEl.onerror = ()=> log("영상 스트림 연결 실패 — 카메라 IP 확인","e");
+  vidEl.onload  = ()=>{ $("vidPh").style.display="none"; };
+  $("vidBox").appendChild(vidEl);
+  $("vidPh").textContent = "영상 연결 중…";
+  applyCam();
+}
+function stopVideo(){
+  clearVideo();
+  $("vidPh").style.display=""; $("vidPh").textContent="연결하면 영상이 표시됩니다";
+}
+function applyCam(){
+  if(simOn) return;
+  const ip = $("ipCam").value.trim();
+  fetch(`http://${ip}/control?size=${$("camSize").value}&quality=${$("camQ").value}`)
+    .then(()=>log(`영상 설정 변경: ${$("camSize").value} / q${$("camQ").value}`))
+    .catch(()=>{});
+}
+$("camSize").onchange = applyCam;
+$("camQ").onchange = applyCam;
+$("btnSnap").onclick = ()=>{
+  if(simOn && simCam){
+    simCam.toBlob(b=>download(b, `SIM_${stamp()}.png`));
+    log("가상 카메라 화면을 저장했습니다","s");
+    return;
+  }
+  const ip = $("ipCam").value.trim();
+  const a = document.createElement("a");
+  a.href = `http://${ip}/capture?_=${Date.now()}`;
+  a.download = `USV_${stamp()}.jpg`; a.target = "_blank"; a.click();
+};
+
+/* 가상 카메라 — 수평선·파도·부표로 움직임을 보여줍니다 */
+function startSimCam(){
+  clearVideo();
+  simCam = document.createElement("canvas");
+  simCam.width = 480; simCam.height = 360;
+  $("vidBox").appendChild(simCam);
+  $("vidPh").style.display = "none";
+  if(!$("vidBox").querySelector(".tag")){
+    const tag = document.createElement("div");
+    tag.className = "tag"; tag.id="vidTag";
+    tag.style.color = CSS("--sim");
+    tag.textContent = "SIMULATION";
+    $("vidBox").appendChild(tag);
+  }
+  $("vidBox").querySelector(".tag").classList.remove("hide");
+}
+const BUOYS = [[25,60],[-40,120],[70,-30],[-15,-80],[110,90],[-120,40]];
+function drawSimCam(){
+  if(!simCam || !sim) return;
+  const c = simCam.getContext("2d");
+  const W = simCam.width, H = simCam.height;
+  const roll = sim.rollDeg, pitch = sim.pitchDeg;
+  const horizon = H*0.45 + pitch*6;
+
+  c.save();
+  c.translate(W/2, H/2); c.rotate(-roll*RAD); c.translate(-W/2, -H/2);
+
+  const sky = c.createLinearGradient(0,-H,0,horizon);
+  sky.addColorStop(0,"#1d3f63"); sky.addColorStop(1,"#86a9c4");
+  c.fillStyle = sky; c.fillRect(-W, -H, W*3, horizon + H);
+
+  const sea = c.createLinearGradient(0,horizon,0,H*2);
+  sea.addColorStop(0,"#1b5a6b"); sea.addColorStop(1,"#09252e");
+  c.fillStyle = sea; c.fillRect(-W, horizon, W*3, H*2);
+
+  c.strokeStyle = "#cfe3ec"; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(-W, horizon); c.lineTo(W*2, horizon); c.stroke();
+
+  // 파도 — 속도에 따라 아래로 흐름
+  const ph = sim.t * (0.6 + sim.u*0.9);
+  c.strokeStyle = "rgba(255,255,255,.16)"; c.lineWidth = 1.4;
+  for(let i=1;i<=14;i++){
+    const f = i/14;
+    const y = horizon + Math.pow(f,2.1)*(H-horizon)*1.9 + ((ph*18)%24);
+    if(y < horizon || y > H*1.3) continue;
+    c.beginPath();
+    for(let x=-W;x<W*2;x+=16){
+      const yy = y + Math.sin((x*0.025)+ph*1.6+i)*(2+f*5);
+      x===-W ? c.moveTo(x,yy) : c.lineTo(x,yy);
+    }
+    c.stroke();
+  }
+
+  // 부표 — 배의 위치·방위에 따라 움직임
+  const s = Math.sin(sim.psi), co = Math.cos(sim.psi);
+  const focal = W*0.9;
+  for(const [bx,by] of BUOYS){
+    const dx = bx - sim.x, dy = by - sim.y;
+    const fwd =  dx*s + dy*co;
+    const lat =  dx*co - dy*s;
+    if(fwd < 3 || fwd > 220) continue;
+    const sx = W/2 + (lat/fwd)*focal;
+    const sy = horizon + (12/fwd)*focal*0.09 + 4;
+    const r  = clamp(260/fwd, 2, 26);
+    if(sx < -60 || sx > W+60) continue;
+    c.fillStyle = "#e2622a";
+    c.beginPath(); c.arc(sx, sy, r, 0, 7); c.fill();
+    c.fillStyle = "rgba(0,0,0,.28)";
+    c.beginPath(); c.ellipse(sx, sy+r*0.8, r*1.3, r*0.4, 0, 0, 7); c.fill();
+  }
+  c.restore();
+
+  // HUD
+  c.fillStyle = "rgba(255,255,255,.85)";
+  c.font = "13px ui-monospace, monospace";
+  c.fillText(`${sim.u.toFixed(2)} m/s`, 12, H-36);
+  const hdg = (((sim.psi/RAD)%360)+360)%360;
+  c.fillText(`HDG ${hdg.toFixed(0).padStart(3,"0")}°`, 12, H-18);
+  c.textAlign = "right";
+  c.fillText(`${sim.distFromHome().toFixed(0)} m`, W-12, H-18);
+  c.textAlign = "left";
+}
+
+/* =====================================================================
+   9. 시뮬레이터 — 가상 USV
+   물리: 2.4 kg 쌍동선, 모터 2기 차동추진, 항력 2차식
+   ===================================================================== */
+const SIM_HOME = [36.3620, 127.3560];     // 대전 갑천 부근 (임의)
+
+class UsvSim{
+  constructor(){ this.reset(); }
+  reset(){
+    this.x = 0; this.y = 0;            // 홈 기준 동/북 (m)
+    this.psi = 0;                      // 선수 방위 (rad, 0=북)
+    this.u = 0; this.r = 0;            // 전진속도(m/s), 요각속도(rad/s)
+    this.t = 0; this.seq = 0;
+    this.rollDeg = 0; this.pitchDeg = 0; this.yawGyro = 0;
+    this.cmdThr = 0; this.cmdStr = 0;
+    this.outThr = 0; this.outStr = 0;
+    this.armed = false; this.rcMode = false; this.autoRun = false;
+    this.lastCmd = 0; this.fs = "";
+    this.mAh = 0; this.amp = 0.6; this.rssiVal = -40; this.du = 0;
+    this.pulseL = 1500; this.pulseR = 1500;
+    this.fsHold = 0; this.fsMsg = "";
+    this.capsizing = 0;
+    this.scn = $("simScn").value;
+    this.soc0 = (this.scn === "lowbatt") ? 0.22 : 1.0;
+  }
+  distFromHome(){ return Math.hypot(this.x, this.y); }
+  trip(code, msg){
+    if(this.fsMsg === code && this.fsHold > 0) return;
+    this.armed = false; this.fsMsg = code; this.fsHold = 5;
+    this.cmdThr = this.cmdStr = 0; this.outThr = this.outStr = 0;
+    log("⚠ " + msg, "e");
+  }
+
+  command(o){
+    if(this.scn === "blackout") return;           // 두절 상황에서는 명령도 안 닿음
+    if(o.c === "drive"){ this.cmdThr = o.thr; this.cmdStr = o.str; this.lastCmd = this.t; }
+    else if(o.c === "arm"){
+      this.armed = !!o.v; this.cmdThr = this.cmdStr = 0;
+      this.outThr = this.outStr = 0; this.lastCmd = this.t;
+      log(this.armed ? "가상 USV 시동" : "가상 USV 시동 해제", "s");
+    }
+    else if(o.c === "stop"){
+      this.armed = false; this.cmdThr = this.cmdStr = 0;
+      this.outThr = this.outStr = 0; this.lastCmd = this.t;
+    }
+    else if(o.c === "ping"){
+      const lat = this.latency();
+      setTimeout(()=>onMessage(JSON.stringify({c:"pong", id:o.id})), lat);
+    }
+  }
+  rssi(){ return this.rssiVal; }
+  computeRssi(){
+    const d = Math.max(this.distFromHome(), 1);
+    let v = -32 - 17*Math.log10(d);
+    if(this.scn === "weaklink") v -= 15;
+    v -= Math.abs(this.rollDeg)/8;                 // 기울면 편파가 어긋남
+    v += Math.sin(this.t*0.7)*1.5 + (Math.random()-0.5)*2;
+    return Math.round(clamp(v, -98, -28));
+  }
+  lossRate(){ return clamp((-this.rssi() - 68)*2.6, 0, 92); }
+  latency(){ return 22 + this.lossRate()*4 + Math.random()*25; }
+
+  step(dt, battMul){
+    this.t += dt;
+    const scn = this.scn;
+
+    // ── 페일세이프 (펌웨어와 동일한 판정) ──
+    this.fs = "";
+    const gcsAlive = (this.t - this.lastCmd) < 1.5;
+    let tThr = this.cmdThr, tStr = this.cmdStr;
+
+    if(this.rcMode){ tThr = this.cmdThr; tStr = this.cmdStr; }
+    else if(!gcsAlive){ tThr = 0; tStr = 0; if(this.armed) this.fs = "GCS_LINK_LOST"; }
+
+    const vbat = this.voltage();
+    if(vbat < 10.2) this.trip("BATTERY_CRITICAL", "배터리 전압 10.2V 미만 — 자동으로 시동을 껐습니다");
+    if(Math.abs(this.rollDeg) > 70) this.trip("CAPSIZED", "롤 70° 초과(전복 판정) — 자동으로 시동을 껐습니다");
+    // 한 번 걸린 경보는 5초간 화면에 남겨 둡니다(원인을 놓치지 않도록)
+    if(this.fsHold > 0){ this.fsHold -= dt; this.fs = this.fsMsg; tThr = 0; tStr = 0; }
+    if(!this.armed){ tThr = 0; tStr = 0; }
+
+    // ── 슬루 + 믹싱 (펌웨어와 동일) ──
+    const maxStep = 2.0*dt;
+    this.outThr += clamp(tThr - this.outThr, -maxStep, maxStep);
+    this.outStr += clamp(tStr - this.outStr, -maxStep*2, maxStep*2);
+    let l = this.outThr + this.outStr*0.65;
+    let rr = this.outThr - this.outStr*0.65;
+    const peak = Math.max(Math.abs(l), Math.abs(rr));
+    if(peak > 1) { l/=peak; rr/=peak; }
+    l = clamp(l,-0.85,0.85); rr = clamp(rr,-0.85,0.85);
+    this.pulseL = Math.round(1500 + l*470);
+    this.pulseR = Math.round(1500 + rr*470);
+
+    // ── 추진력 (추력 ∝ 명령²) ──
+    const FMAX = 7.65;                             // N, 780 gf
+    const FL = FMAX*Math.sign(l)*l*l;
+    const FR = FMAX*Math.sign(rr)*rr*rr;
+    const m = 2.4, I = 0.15, halfBeam = 0.175;
+    const Fs = FL + FR;
+    const Mz = (FL - FR)*halfBeam;
+
+    const du = (Fs - 3.16*this.u*Math.abs(this.u))/m;
+    this.u += du*dt;
+    this.r += (Mz - 1.86*this.r*Math.abs(this.r))/I*dt;
+
+    this.psi += this.r*dt;
+    while(this.psi < 0) this.psi += Math.PI*2;
+    while(this.psi >= Math.PI*2) this.psi -= Math.PI*2;
+    this.x += this.u*Math.sin(this.psi)*dt;
+    this.y += this.u*Math.cos(this.psi)*dt;
+
+    // ── 자세 : 파도 + 선회 횡경사 ──
+    const waveA = (+$("simWave").value/100) * (scn==="rough" ? 18 : 8);
+    const heel = clamp(-this.u*this.r*7, -16, 16);
+    this.rollDeg  = waveA*Math.sin(this.t*2.3) + waveA*0.45*Math.sin(this.t*3.9+1.1) + heel;
+    this.pitchDeg = waveA*0.55*Math.sin(this.t*1.9+0.6) - du*1.8;
+
+    if(scn === "capsize"){
+      if(this.t > 12) this.capsizing += dt*9;
+      this.rollDeg += this.capsizing;
+    }
+    this.yawGyro = this.r/RAD + (Math.random()-0.5)*1.2;
+    this.rssiVal = this.computeRssi();
+
+    // ── 전력 ──
+    this.amp = 0.6 + 13*(Math.abs(l)**3 + Math.abs(rr)**3);
+    this.mAh += this.amp*1000*dt*battMul/3600;
+    this.du = du;
+  }
+  // 완전 방전 뒤에도 전압이 더 떨어지도록 음수 구간을 둡니다(실제 LiPo의 전압 붕괴)
+  soc(){ return clamp(this.soc0 - this.mAh/5000, -0.35, 1); }
+  voltage(){
+    // 3S LiPo 방전 곡선 근사 : 만충 12.6V → 공칭 11.1V → 바닥에서 급격히 붕괴
+    const s = Math.max(this.soc(), 0);
+    const voc = 9.6 + 3.0*Math.pow(s, 0.45) + Math.min(this.soc(),0)*2.0;
+    return Math.max(voc - this.amp*0.045, 8.0);
+  }
+  packet(){
+    const lat0 = SIM_HOME[0], lon0 = SIM_HOME[1];
+    const lat = lat0 + this.y/111320;
+    const lon = lon0 + this.x/(111320*Math.cos(lat0*RAD));
+    const yaw = (this.psi/RAD + 360) % 360;
+    const rssi = this.rssi();
+    const n = () => (Math.random()-0.5);
+    return {
+      seq: this.seq++, t: Math.round(this.t*1000),
+      roll:+this.rollDeg.toFixed(1), pitch:+this.pitchDeg.toFixed(1), yaw:+yaw.toFixed(1),
+      ax:+(this.du/9.81 + n()*0.05).toFixed(2),
+      ay:+(this.u*this.r/9.81 + n()*0.05).toFixed(2),
+      az:+(1 + Math.sin(this.t*2.3)*0.06 + n()*0.04).toFixed(2),
+      gz:+this.yawGyro.toFixed(1), tmp:+(27 + Math.sin(this.t/60)*1.5).toFixed(1),
+      lat:+lat.toFixed(7), lon:+lon.toFixed(7),
+      spd:+Math.max(0,this.u + n()*0.04).toFixed(2),
+      cog:+yaw.toFixed(1), alt:+(38 + n()*2).toFixed(1),
+      sat: 9 + Math.round(Math.abs(Math.sin(this.t/20))*3),
+      hdop:+(0.8 + Math.abs(Math.sin(this.t/13))*0.7).toFixed(2),
+      fix: 1,
+      vbat:+this.voltage().toFixed(2),
+      rssi, arm: this.armed?1:0,
+      mode: this.rcMode ? "RC" : "GCS", rc: 1,
+      thr:+this.outThr.toFixed(2), str:+this.outStr.toFixed(2),
+      pl:this.pulseL, pr:this.pulseR, fs:this.fs
+    };
+  }
+}
+
+/* 시뮬레이션 구동 루프 : 물리 50 Hz, 텔레메트리 10 Hz */
+let simTimer = null, simLast = 0, simAcc = 0, simStart = 0;
+function simLoop(){
+  const now = performance.now();
+  let dt = (now - simLast)/1000; simLast = now;
+  dt = Math.min(dt, 0.1);
+  // 자동 직진 중에는 시간 배속만큼 실제로 빨리 움직입니다(거리 시험을 짧게).
+  // 손으로 조종할 때는 항상 1배속이라 조작감이 그대로입니다.
+  const mul = +$("simSpeed").value;
+  sim.step(dt * (sim.autoRun ? mul : 1), mul);
+  drawSimCam();
+
+  simAcc += dt;
+  if(simAcc >= 0.1){
+    simAcc = 0;
+    const pkt = sim.packet();
+    // 손실률만큼 실제로 패킷을 버립니다 (GCS의 손실 계산을 그대로 시험)
+    const drop = sim.scn === "blackout" ? true : (Math.random()*100 < sim.lossRate());
+    if(!drop) setTimeout(()=>onMessage(JSON.stringify(pkt)), sim.latency()/2);
+
+    $("simDist").textContent = sim.distFromHome().toFixed(0);
+    $("simAmp").textContent  = sim.amp.toFixed(1);
+    $("simSoc").textContent  = Math.max(0, Math.round(sim.soc()*100));
+    const s = Math.floor((now - simStart)/1000);
+    $("simElapsed").textContent =
+      String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+  }
+}
+
+function startSim(){
+  simOn = true;
+  sim = new UsvSim();
+  resetLinkStats();
+  $("btnSim").textContent = "🧪 시뮬레이션 끄기";
+  $("btnSim").classList.add("simon");
+  $("simPanel").classList.remove("hide");
+  $("btnConn").disabled = true;
+  $("btnArm").disabled = false; $("btnStop").disabled = false;
+  $("vidTitle").textContent = "가상 카메라 · 시뮬레이션";
+  setLink("sim","시뮬레이션 중");
+  startSimCam();
+  simLast = simStart = performance.now(); simAcc = 0;
+  simTimer = setInterval(simLoop, 20);
+  log("시뮬레이션 시작 — 실제 하드웨어 없이 연습합니다","s");
+  log("[시동] 을 누른 뒤 W/A/S/D 또는 조이스틱으로 조종해 보세요","s");
+}
+function stopSim(){
+  simOn = false;
+  clearInterval(simTimer); simTimer = null;
+  $("btnSim").textContent = "🧪 시뮬레이션";
+  $("btnSim").classList.remove("simon");
+  $("simPanel").classList.add("hide");
+  $("btnConn").disabled = false;
+  $("btnArm").disabled = true; $("btnStop").disabled = true;
+  $("btnArm").classList.remove("on"); $("btnArm").textContent = "시동 (ARM)";
+  $("vidTitle").textContent = "실시간 영상 · XIAO ESP32S3";
+  document.body.classList.remove("stale");
+  const tag = $("vidBox").querySelector(".tag"); if(tag) tag.classList.add("hide");
+  stopVideo();
+  setLink("","연결 안 됨");
+  resetLinkStats();
+  log("시뮬레이션 종료");
+}
+$("btnSim").onclick = ()=> simOn ? stopSim() : startSim();
+
+$("simScn").onchange = ()=>{
+  if(!simOn) return;
+  sim.scn = $("simScn").value;
+  sim.soc0 = (sim.scn==="lowbatt") ? 0.22 : 1.0;
+  sim.mAh = 0; sim.capsizing = 0;
+  const NAME = {normal:"정상 운항", weaklink:"통신 약화", lowbatt:"저전압 출발",
+                rough:"파고 높음", capsize:"전복", blackout:"통신 두절"};
+  log(`상황 전환 → ${NAME[sim.scn]}`, "s");
+  if(sim.scn==="capsize") log("12초 뒤부터 서서히 기울어집니다. 롤 70°에서 자동 정지하는지 보세요","s");
+  if(sim.scn==="blackout") log("텔레메트리를 끊습니다. 2초 뒤 '신호 없음' 표시를 확인하세요","s");
+};
+$("simAuto").onclick = ()=>{
+  if(!simOn) return;
+  sim.autoRun = !sim.autoRun;
+  $("simAuto").classList.toggle("simon", sim.autoRun);
+  $("simAuto").textContent = sim.autoRun ? "■ 자동 직진 정지" : "▶ 자동 직진 (거리 시험)";
+  if(sim.autoRun){
+    if(!sim.armed) send({c:"arm", v:1});
+    log(`자동으로 직진합니다 (${$("simSpeed").value}배속) — RSSI 추이와 통신 등급이 어떻게 변하는지 보세요`,"s");
+  }
+};
+$("simRc").onclick = ()=>{
+  if(!simOn) return;
+  sim.rcMode = !sim.rcMode;
+  $("simRc").classList.toggle("simon", sim.rcMode);
+  log(sim.rcMode ? "조종권을 RC 조종기로 넘겼습니다" : "조종권을 GCS로 되돌렸습니다", "s");
+};
+$("simReset").onclick = ()=>{
+  if(!simOn) return;
+  const scn = $("simScn").value;
+  sim.reset(); sim.scn = scn;
+  sim.soc0 = (scn==="lowbatt") ? 0.22 : 1.0;
+  resetLinkStats();
+  simStart = performance.now();
+  $("simAuto").classList.remove("simon");
+  $("simAuto").textContent = "▶ 자동 직진 (거리 시험)";
+  $("simRc").classList.remove("simon");
+  log("시뮬레이션을 처음 상태로 되돌렸습니다","s");
+};
+
+/* =====================================================================
+   10. 데이터 기록 + 엑셀(.xlsx) 저장
+   ===================================================================== */
+const COLS = [
+  ["시각",           d=>d._time],
+  ["경과(s)",        d=>d._el],
+  ["seq",            d=>d.seq],
+  ["Roll(deg)",      d=>d.roll],
+  ["Pitch(deg)",     d=>d.pitch],
+  ["Yaw(deg)",       d=>d.yaw],
+  ["AccX(g)",        d=>d.ax],
+  ["AccY(g)",        d=>d.ay],
+  ["AccZ(g)",        d=>d.az],
+  ["GyroZ(deg/s)",   d=>d.gz],
+  ["IMU온도(C)",     d=>d.tmp],
+  ["위도",           d=>d.fix?d.lat:""],
+  ["경도",           d=>d.fix?d.lon:""],
+  ["고도(m)",        d=>d.alt],
+  ["속도(m/s)",      d=>d.spd],
+  ["방위(deg)",      d=>d.cog],
+  ["위성수",         d=>d.sat],
+  ["HDOP",           d=>d.hdop],
+  ["GPS픽스",        d=>d.fix],
+  ["전압(V)",        d=>d.vbat],
+  ["RSSI(dBm)",      d=>d.rssi],
+  ["지연(ms)",       d=>d._rtt],
+  ["손실(%)",        d=>d._loss],
+  ["스로틀",         d=>d.thr],
+  ["조향",           d=>d.str],
+  ["좌ESC(us)",      d=>d.pl],
+  ["우ESC(us)",      d=>d.pr],
+  ["시동",           d=>d.arm],
+  ["모드",           d=>d.mode],
+  ["RC상태",         d=>d.rc],
+  ["페일세이프",     d=>d.fs||""],
+  ["구분",           d=>d._src],
+];
+let rec = [], recording = false, recT0 = 0, recSkip = 0;
+
+function stamp(){
+  const d=new Date(), p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function recordSample(d){
+  if(!recording) return;
+  const every = +$("recHz").value;
+  if(++recSkip % every !== 0) return;
+  const q = linkQuality(d.rssi);
+  rec.push(Object.assign({}, d, {
+    _time: new Date().toTimeString().slice(0,8),
+    _el: +((performance.now()-recT0)/1000).toFixed(2),
+    _rtt: q.rtt===null? "" : +q.rtt.toFixed(0),
+    _loss: +q.loss.toFixed(2),
+    _src: simOn ? "시뮬레이션" : "실측"
+  }));
+  $("recCount").textContent = rec.length + " 개";
+  const s = Math.floor((performance.now()-recT0)/1000);
+  $("recTime").textContent = String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+}
+$("btnRec").onclick = ()=>{
+  recording = !recording;
+  if(recording){
+    if(!rec.length) recT0 = performance.now();
+    $("btnRec").textContent="⏸ 기록 정지"; $("btnRec").classList.remove("primary");
+    $("recState").textContent = simOn ? "기록 중 (시뮬레이션)" : "기록 중";
+    $("recState").style.color = simOn ? CSS("--sim") : CSS("--good");
+    log("데이터 기록 시작","g");
+  }else{
+    $("btnRec").textContent="● 기록 시작"; $("btnRec").classList.add("primary");
+    $("recState").textContent="일시정지"; $("recState").style.color=CSS("--warn");
+    log(`기록 정지 (${rec.length} 샘플)`);
+  }
+  const has = rec.length>0;
+  $("btnXlsx").disabled = !has; $("btnCsv").disabled = !has; $("btnClrRec").disabled = !has;
+};
+$("btnClrRec").onclick = ()=>{
+  rec=[]; recT0=performance.now(); $("recCount").textContent="0 개"; $("recTime").textContent="00:00";
+  $("btnXlsx").disabled=true; $("btnCsv").disabled=true; $("btnClrRec").disabled=true;
+  log("기록 삭제");
+};
+$("btnCsv").onclick = ()=>{
+  const head = COLS.map(c=>c[0]).join(",");
+  const body = rec.map(r=>COLS.map(c=>{
+    const v=c[1](r); return typeof v==="string" && /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v;
+  }).join(",")).join("\n");
+  download(new Blob(["﻿"+head+"\n"+body], {type:"text/csv;charset=utf-8"}), `USV_${stamp()}.csv`);
+  log(`CSV 저장 완료 (${rec.length} 행)`,"g");
+};
+$("btnXlsx").onclick = ()=>{
+  download(buildXlsx(), `USV_${stamp()}.xlsx`);
+  log(`엑셀 저장 완료 (${rec.length} 행)`,"g");
+};
+function download(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- 순수 JS XLSX 생성기 (무압축 ZIP + OOXML) ---------- */
+const CRC_TABLE = (()=>{
+  const t = new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320 ^ (c>>>1) : c>>>1;
+    t[n]=c>>>0; }
+  return t;
+})();
+function crc32(u8){
+  let c = 0xFFFFFFFF;
+  for(let i=0;i<u8.length;i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c>>>8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function zipStore(files){
+  const enc = new TextEncoder();
+  const chunks = [], central = [];
+  let offset = 0;
+  for(const f of files){
+    const nb = enc.encode(f.name);
+    const data = typeof f.data === "string" ? enc.encode(f.data) : f.data;
+    const crc = crc32(data);
+    const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
+    lv.setUint16(6,0,true); lv.setUint16(8,0,true);
+    lv.setUint16(10,0,true); lv.setUint16(12,0,true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true);
+    lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nb.length, true); lv.setUint16(28,0,true);
+    lh.set(nb,30);
+    chunks.push(lh, data);
+
+    const ch = new Uint8Array(46 + nb.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(8,0,true); cv.setUint16(10,0,true);
+    cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nb.length, true); cv.setUint16(30,0,true); cv.setUint16(32,0,true);
+    cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true);
+    cv.setUint32(42, offset, true);
+    ch.set(nb,46);
+    central.push(ch);
+    offset += lh.length + data.length;
+  }
+  const cdSize = central.reduce((a,b)=>a+b.length,0);
+  const eo = new Uint8Array(22), ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4,0,true); ev.setUint16(6,0,true);
+  ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+  ev.setUint16(20,0,true);
+  return new Blob([...chunks, ...central, eo], {type:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+const xesc = s => String(s).replace(/[&<>"']/g, m =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[m]));
+function colName(n){ let s=""; n++; while(n>0){ const r=(n-1)%26; s=String.fromCharCode(65+r)+s; n=(n-r-1)/26; } return s; }
+function sheetXml(rows){
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+  rows.forEach((row, ri)=>{
+    x += `<row r="${ri+1}">`;
+    row.forEach((cell, ci)=>{
+      if(cell===null || cell===undefined || cell==="") return;
+      const ref = colName(ci) + (ri+1);
+      const s = ri===0 ? ' s="1"' : '';
+      if(typeof cell === "number" && isFinite(cell))
+        x += `<c r="${ref}"${s}><v>${cell}</v></c>`;
+      else
+        x += `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xesc(cell)}</t></is></c>`;
+    });
+    x += '</row>';
+  });
+  return x + '</sheetData></worksheet>';
+}
+function buildXlsx(){
+  const dataRows = [COLS.map(c=>c[0])];
+  for(const r of rec) dataRows.push(COLS.map(c=>{
+    const v = c[1](r);
+    return (typeof v === "number" || typeof v === "string") ? v : (v===undefined?"":String(v));
+  }));
+
+  const num = k => rec.map(r=>Number(r[k])).filter(v=>isFinite(v));
+  const stat = (label, k, u, d=2) => {
+    const a = num(k);
+    if(!a.length) return [label,"—","—","—",u];
+    const mean = a.reduce((x,y)=>x+y,0)/a.length;
+    return [label, +Math.min(...a).toFixed(d), +Math.max(...a).toFixed(d), +mean.toFixed(d), u];
+  };
+  const dur = rec.length ? rec[rec.length-1]._el : 0;
+  const isSim = rec.length && rec.some(r=>r._src==="시뮬레이션");
+  const summary = [
+    ["항목","값"],
+    ["기체","대전중앙중학교 쌍동선 USV"],
+    ["데이터 종류", isSim ? "시뮬레이션 (연습용)" : "실측"],
+    ["기록 일시", new Date().toLocaleString("ko-KR")],
+    ["샘플 수", rec.length],
+    ["기록 시간(s)", dur],
+    ["평균 기록 주기(Hz)", dur ? +(rec.length/dur).toFixed(2) : 0],
+    [],
+    ["측정 항목","최소","최대","평균","단위"],
+    stat("Roll","roll","deg",1),
+    stat("Pitch","pitch","deg",1),
+    stat("속도","spd","m/s",2),
+    stat("배터리 전압","vbat","V",2),
+    stat("RSSI","rssi","dBm",0),
+    stat("지연","_rtt","ms",0),
+    stat("패킷 손실","_loss","%",2),
+    stat("위성 수","sat","개",0),
+  ];
+
+  const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+    '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    '</Types>';
+  const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+    '</Relationships>';
+  const wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '+
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+    '<sheet name="텔레메트리" sheetId="1" r:id="rId1"/>'+
+    '<sheet name="요약" sheetId="2" r:id="rId2"/></sheets></workbook>';
+  const wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'+
+    '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
+    '</Relationships>';
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+    '<fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font>'+
+    '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="맑은 고딕"/></font></fonts>'+
+    '<fills count="3"><fill><patternFill patternType="none"/></fill>'+
+    '<fill><patternFill patternType="gray125"/></fill>'+
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF2A78D6"/><bgColor indexed="64"/></patternFill></fill></fills>'+
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'+
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'+
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+
+    '</styleSheet>';
+
+  return zipStore([
+    {name:"[Content_Types].xml",       data: ct},
+    {name:"_rels/.rels",               data: rels},
+    {name:"xl/workbook.xml",           data: wb},
+    {name:"xl/_rels/workbook.xml.rels",data: wbRels},
+    {name:"xl/styles.xml",             data: styles},
+    {name:"xl/worksheets/sheet1.xml",  data: sheetXml(dataRows)},
+    {name:"xl/worksheets/sheet2.xml",  data: sheetXml(summary)},
+  ]);
+}
+
+/* =====================================================================
+   11. 시작
+   ===================================================================== */
+log("GCS 준비 완료. 본체 IP를 확인하고 [연결]을 누르세요.");
+log("배가 아직 없다면 [🧪 시뮬레이션] 으로 먼저 연습할 수 있습니다.","s");
+log("주의: 물에 띄우기 전 반드시 프로펠러를 떼고 지상 시험을 하세요.","e");
+addEventListener("beforeunload", e=>{ if(T.arm && !simOn){ e.preventDefault(); e.returnValue=""; } });
+</script>
+</body>
+</html>
